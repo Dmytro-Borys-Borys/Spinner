@@ -1,15 +1,15 @@
 #!/bin/bash
 
-if [ $# -lt 1 ]; then
-  echo "Usage: $0 [-q|--quiet] <command> [message]"
-  exit 1
-fi
-
 quiet_mode=false
 
 if [ "$1" = "-q" ] || [ "$1" = "--quiet" ]; then
   quiet_mode=true
   shift
+fi
+
+if [ $# -lt 1 ]; then
+  echo "Usage: $0 [-q|--quiet] <command> [message]"
+  exit 1
 fi
 
 command="$1"
@@ -33,15 +33,17 @@ hide_cursor="${adjust}?25l"
 show_cursor="${adjust}?25h"
 erase_till_end_of_line="${adjust}K"
 clear_screen_from_cursor="${adjust}J"
+lines_up="A"
+lines_down="B"
 
-output_file="output.txt"  # File to store the command output
+output_file="output.txt" # File to store the command output
 if [ -f "$output_file" ]; then
-  rm -f "$output_file"
+  rm -f "$output_file" # Remove existing output file if present
 fi
 maxlines=6
 
 # Run the command in the background while piping the output to tee
-eval "$command" > "$output_file" 2>&1 &
+eval "$command" >"$output_file" 2>&1 &
 
 # Capture the process ID of the background command
 cmd_pid=$!
@@ -50,24 +52,15 @@ cmd_pid=$!
 echo -ne "$hide_cursor"
 
 # Display the spinner until the background command exits
-if [ "$quiet_mode" = true ]; then
-  while true; do
-    spinner="${spinner_chars[spinner_idx]}"
-    printf "${adjust}1A\r%s %s${adjust}1B\r" "$spinner" "$message"
-    spinner_idx=$(( (spinner_idx + 1) % ${#spinner_chars[@]} ))
-    sleep 0.1
-    if ! kill -0 "$cmd_pid" >/dev/null 2>&1; then
-      break  # Break the loop if the command has finished
-    fi
-  done
-else
-  while true; do
-    spinner="${spinner_chars[spinner_idx]}"
-    mapfile -t lines < "$output_file"  # Read the lines from the output file into an array
-    readlines=${#lines[@]}  # Get the number of lines in the array
+while true; do
+  spinner="${spinner_chars[spinner_idx]}"
+  # Print the spinner and message
+  printf "${adjust}1${lines_up}\r%s %s${adjust}1${lines_down}\r" "$spinner" "$message"
+  spinner_idx=$(((spinner_idx + 1) % ${#spinner_chars[@]}))
 
-    # Print the spinner and message
-    printf "${adjust}1A\r%s %s${adjust}1B\r" "$spinner" "$message"
+  if [ "$quiet_mode" = false ]; then
+    mapfile -t lines <"$output_file" # Read the lines from the output file into an array
+    readlines=${#lines[@]}           # Get the number of lines in the array
 
     # Print the last lines from the array
     start_index=$((readlines - maxlines))
@@ -79,16 +72,15 @@ else
     # Adjust the cursor position
     displacement=$((readlines - start_index))
     if [ $readlines -gt 0 ]; then
-      printf "${adjust}%dA" "$displacement"
+      printf "${adjust}%d${lines_up}" "$displacement"
     fi
+  fi
 
-    spinner_idx=$(( (spinner_idx + 1) % ${#spinner_chars[@]} ))
-    sleep 0.1
-    if ! kill -0 "$cmd_pid" >/dev/null 2>&1; then
-      break  # Break the loop if the command has finished
-    fi
-  done
-fi
+  sleep 0.1
+  if ! kill -0 "$cmd_pid" >/dev/null 2>&1; then
+    break # Break the loop if the command has finished
+  fi
+done
 
 # Wait for the background command to finish and capture the exit code
 wait "$cmd_pid"
@@ -96,12 +88,20 @@ exit_code=$?
 
 # Print the status message
 if [ $exit_code -eq 0 ]; then
-  echo -e "${adjust}1A\r${green_color}✔️ ${default_color}${message}:${bold_text}${green_color} SUCCESS ${default_color}${clear_screen_from_cursor}"
+  echo -ne "${adjust}1${lines_up}\r"                              # move cursor 1 line up
+  echo -ne "${green_color}✔️${default_color}"                     # show check mark
+  echo -ne " ${message}"                                          # print message string
+  echo -ne ":${bold_text}${green_color} SUCCESS ${default_color}" # print SUCCESS in green
+  echo -e "${clear_screen_from_cursor}"                           # clean up
 else
-  echo -e "${adjust}1A\r${red_color}✖️ ${default_color}${message}:${bold_text}${red_color} FAILED ${default_color}(error $exit_code)${clear_screen_from_cursor}"
-  echo -ne "${red_color}"
-  cat "$output_file"
-  echo -ne "${default_color}"
+  echo -ne "${adjust}1${lines_up}\r"                                             # move cursor 1 line up
+  echo -ne "${red_color}✖️${default_color}"                                      # show check mark
+  echo -ne " ${message}"                                                         # print message string
+  echo -ne ":${bold_text}${red_color} FAILED ${default_color}(error $exit_code)" # print FAILED in red and show error code
+  echo -e "${clear_screen_from_cursor}"                                          # clean up
+  echo -ne "${red_color}"                                                        # switch to red
+  cat "$output_file"                                                             # print entire error output
+  echo -ne "${default_color}"                                                    # reset color
 fi
 
 # Remove the output file
