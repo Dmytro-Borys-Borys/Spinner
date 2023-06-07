@@ -40,7 +40,12 @@ output_file="output.txt" # File to store the command output
 if [ -f "$output_file" ]; then
   rm -f "$output_file" # Remove existing output file if present
 fi
+
+# Max number of lines to print at the bottom
 maxlines=6
+
+# Get the number of columns in the current terminal
+columns=$(tput cols)
 
 # Run the command in the background while piping the output to tee
 eval "$command" >"$output_file" 2>&1 &
@@ -51,29 +56,40 @@ cmd_pid=$!
 # Hide the cursor
 echo -ne "$hide_cursor"
 
+previous_timestamp=0  # Initialize previous timestamp to 0
+
 # Display the spinner until the background command exits
 while true; do
+  
   spinner="${spinner_chars[spinner_idx]}"
   # Print the spinner and message
   printf "${adjust}1${lines_up}\r%s %s${adjust}1${lines_down}\r" "$spinner" "$message"
   spinner_idx=$(((spinner_idx + 1) % ${#spinner_chars[@]}))
 
   if [ "$quiet_mode" = false ]; then
-    mapfile -t lines <"$output_file" # Read the lines from the output file into an array
-    readlines=${#lines[@]}           # Get the number of lines in the array
+    current_timestamp=$(stat -c %Y "$output_file")  # Get the current modification timestamp
 
-    # Print the last lines from the array
-    start_index=$((readlines - maxlines))
-    start_index=$((start_index > 0 ? start_index : 0))
-    for ((i = start_index; i < readlines; i++)); do
-      printf "${erase_till_end_of_line}%s\n\r" "${lines[i]}"
-    done
+      # Check if the file has been modified since the last iteration
+      if [ "$current_timestamp" -gt "$previous_timestamp" ]; then
+          mapfile -t lines < "$output_file"  # Read the lines from the output file into an array
+          readlines=${#lines[@]}            # Get the number of lines in the array
+          printf "${clear_screen_from_cursor}"
+          # Print the last lines from the array
+          start_index=$((readlines - maxlines))
+          start_index=$((start_index > 0 ? start_index : 0))
+          for ((i = start_index; i < readlines; i++)); do
+              # Truncate the line to the number of columns
+              printf "%s\n\r" "${lines[i]:0:columns}"
+          done
 
-    # Adjust the cursor position
-    displacement=$((readlines - start_index))
-    if [ $readlines -gt 0 ]; then
-      printf "${adjust}%d${lines_up}" "$displacement"
-    fi
+          # Adjust the cursor position
+          displacement=$((readlines - start_index))
+          if [ "$readlines" -gt 0 ]; then
+              printf "${adjust}%d${lines_up}" "$displacement"
+          fi
+
+          previous_timestamp=$current_timestamp  # Update the previous timestamp
+      fi
   fi
 
   sleep 0.1
