@@ -67,29 +67,31 @@ while true; do
   spinner_idx=$(((spinner_idx + 1) % ${#spinner_chars[@]}))
 
   if [ "$quiet_mode" = false ]; then
-    current_timestamp=$(stat -c %Y "$output_file")  # Get the current modification timestamp
+    if [ -f "$output_file" ]; then
+      current_timestamp=$(stat -c %Y "$output_file")  # Get the current modification timestamp
+    fi
 
-      # Check if the file has been modified since the last iteration
-      if [ "$current_timestamp" -gt "$previous_timestamp" ]; then
-          mapfile -t lines < "$output_file"  # Read the lines from the output file into an array
-          readlines=${#lines[@]}            # Get the number of lines in the array
-          printf "${clear_screen_from_cursor}"
-          # Print the last lines from the array
-          start_index=$((readlines - maxlines))
-          start_index=$((start_index > 0 ? start_index : 0))
-          for ((i = start_index; i < readlines; i++)); do
-              # Truncate the line to the number of columns
-              printf "%s\n\r" "${lines[i]:0:columns}"
-          done
+    # Check if the file has been modified since the last iteration
+    if [ "$current_timestamp" -gt "$previous_timestamp" ]; then
+        mapfile -t lines < "$output_file"  # Read the lines from the output file into an array
+        readlines=${#lines[@]}            # Get the number of lines in the array
+        printf "${clear_screen_from_cursor}"
+        # Print the last lines from the array
+        start_index=$((readlines - maxlines))
+        start_index=$((start_index > 0 ? start_index : 0))
+        for ((i = start_index; i < readlines; i++)); do
+            # Truncate the line to the number of columns
+            printf "%s\n\r" "${lines[i]:0:columns}"
+        done
 
-          # Adjust the cursor position
-          displacement=$((readlines - start_index))
-          if [ "$readlines" -gt 0 ]; then
-              printf "${adjust}%d${lines_up}" "$displacement"
-          fi
+        # Adjust the cursor position
+        displacement=$((readlines - start_index))
+        if [ "$readlines" -gt 0 ]; then
+            printf "${adjust}%d${lines_up}" "$displacement"
+        fi
 
-          previous_timestamp=$current_timestamp  # Update the previous timestamp
-      fi
+        previous_timestamp=$current_timestamp  # Update the previous timestamp
+    fi
   fi
 
   sleep 0.1
