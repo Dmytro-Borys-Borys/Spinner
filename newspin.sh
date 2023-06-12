@@ -57,6 +57,7 @@ cmd_pid=$!
 echo -ne "$hide_cursor"
 
 previous_timestamp=0  # Initialize previous timestamp to 0
+current_timestamp=0   # Initialize current timestamp to 0
 
 # Display the spinner until the background command exits
 while true; do
